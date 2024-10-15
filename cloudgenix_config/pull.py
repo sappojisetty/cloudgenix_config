@@ -166,6 +166,8 @@ CELLULAR_MODULES_SIM_SECURITY_STR = "cellular_modules_sim_security"
 ELEMENT_CELLULAR_MODULES_STR = "element_cellular_modules"
 ELEMENT_CELLULAR_MODULES_FIRMWARE_STR = "element_cellular_modules_firmware"
 RADII_STR = "radii"
+OSPFCONFIGS_STR = "ospfconfigs"
+OSPFGLOBALCONFIGS_STR = "ospfglobalconfigs"
 # MULTICASTPEERGROUPS_STR = "multicastpeergroups"
 
 # Global Config Cache holders
@@ -615,6 +617,8 @@ def build_version_strings():
     global ELEMENT_CELLULAR_MODULES_STR
     global ELEMENT_CELLULAR_MODULES_FIRMWARE_STR
     global RADII_STR
+    global OSPFCONFIGS_STR
+    global OSPFGLOBALCONFIGS_STR
 
     if not STRIP_VERSIONS:
         # Config container strings
@@ -655,6 +659,9 @@ def build_version_strings():
         ELEMENT_CELLULAR_MODULES_STR = add_version_to_object(sdk.get.element_cellular_modules, "element_cellular_modules")
         ELEMENT_FIRMWARE_CELLULAR_MODULES_STR = add_version_to_object(sdk.get.element_cellular_modules_firmware, "element_cellular_modules_firmware")
         RADII_STR = add_version_to_object(sdk.get.radii, "radii")
+        OSPFCONFIGS_STR = add_version_to_object(sdk.get.ospfconfigs, "ospfconfigs")
+        OSPFGLOBALCONFIGS_STR = add_version_to_object(sdk.get.ospfglobalconfigs, "ospfglobalconfigs")
+
 
 def strip_meta_attributes(obj, leave_name=False, report_id=None):
     """
@@ -1707,6 +1714,42 @@ def _pull_config_for_single_site(site_name_id):
             element[IPFIX_STR].update(ipfix_template)
         delete_if_empty(element, IPFIX_STR)
 
+        #Get ospfconfigs
+        element[OSPFCONFIGS_STR] = {}
+        response = sdk.get.ospfconfigs(site['id'], element['id'])
+        if not response.cgx_status:
+            throw_error("Element Ospfconfigs get failed: ", response)
+        element_ospfconfigs = response.cgx_content['items']
+
+        for element_ospfconfig in element_ospfconfigs:
+
+            name_lookup_in_template(element_ospfconfig, 'prefix_adv_route_map_id', id_name_cache)
+            name_lookup_in_template(element_ospfconfig, 'redistribute_route_map_id', id_name_cache)
+            name_lookup_in_template(element_ospfconfig, 'vrf_context_id', id_name_cache)
+
+            if element_ospfconfig.get('interfaces'):
+                for interface in element_ospfconfig.get('interfaces'):
+                    name_lookup_in_template(interface, 'interface_id', id_name_cache)
+
+            element_ospfconfig_template = copy.deepcopy(element_ospfconfig)
+            name = element_ospfconfig_template.get('name')
+            strip_meta_attributes(element_ospfconfig_template)
+            element[OSPFCONFIGS_STR][name] = element_ospfconfig_template
+        delete_if_empty(element, OSPFCONFIGS_STR)
+
+        # Get ospfglobalconfigs
+        element[OSPFGLOBALCONFIGS_STR] = []
+        response = sdk.get.ospfglobalconfigs(site['id'], element['id'])
+        if not response.cgx_status:
+          throw_error("Element Ospfglobalconfigs get failed: ", response)
+        element_ospfglobalconfigs = response.cgx_content['items']
+
+        for element_ospfglobalconfig in element_ospfglobalconfigs:
+            element_ospfglobalconfig_template = copy.deepcopy(element_ospfglobalconfig)
+            strip_meta_attributes(element_ospfglobalconfig_template)
+            element[OSPFGLOBALCONFIGS_STR].append(element_ospfglobalconfig_template)
+        delete_if_empty(element, OSPFGLOBALCONFIGS_STR)
+
         # Get toolkit
         response = sdk.get.elementaccessconfigs(element['id'])
         if not response.cgx_status:
@@ -2120,6 +2163,7 @@ def go():
     # check for token
     if CLOUDGENIX_AUTH_TOKEN and not args["email"] and not args["password"]:
         sdk.interactive.use_token(CLOUDGENIX_AUTH_TOKEN)
+
         if sdk.tenant_id is None:
             throw_error("AUTH_TOKEN login failure, please check token.")
 
